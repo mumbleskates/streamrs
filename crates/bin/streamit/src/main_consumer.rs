@@ -12,11 +12,7 @@ use fluvio::{
   Offset,
 };
 use std::{sync::Arc, time::Duration};
-use streamitlib::{
-  configure_tracing::init,
-  message::{MessageKind, MessageWrapper},
-  topic::MYIO_TOPIC,
-};
+use streamitlib::{configure_tracing::init, message::StreamMessage, topic::MYIO_TOPIC};
 use thiserror::Error;
 use tokio::{
   signal::unix::{signal, SignalKind},
@@ -168,22 +164,22 @@ async fn receiver<TPinger: Pinger + 'static, TConsumer: Consumer + 'static>(
 
 fn handle_message(record: &ConsumerRecord, msg_processed_tx: oneshot::Sender<()>) -> Result<()> {
   let data = record.value();
-  let wrapper = MessageWrapper::decode_borrowed(data).context("Failed to decode message")?;
+  let msg = StreamMessage::decode_borrowed(data).context("Failed to decode message")?;
 
-  let result = match wrapper.kind {
-    MessageKind::Birth(birth) => {
+  let result = match msg {
+    StreamMessage::Birth(birth) => {
       debug!("Received Birth: {birth:?}");
       Ok(())
     }
-    MessageKind::Marriage(marriage) => {
+    StreamMessage::Marriage(marriage) => {
       debug!("Received Marriage: {marriage:?}");
       Ok(())
     }
-    MessageKind::CloseConsumers(reason) => {
+    StreamMessage::CloseConsumers(reason) => {
       debug!("Received CloseServer: {reason:?}");
       Err(ConsumerError::CloseRequested(reason).into())
     }
-    MessageKind::None => {
+    StreamMessage::None => {
       error!("Received None. Data: {data:?}");
       Ok(())
     }
@@ -232,8 +228,8 @@ mod tests {
     });
 
     let records = [
-      MessageWrapper::from(Birth::new("AliceMOCK".to_owned())),
-      MessageWrapper::new_close_server(),
+      StreamMessage::from(Birth::new("AliceMOCK".to_owned())),
+      StreamMessage::new_close_server(),
     ]
     .iter()
     .map(bilrost::Message::encode_to_bytes)

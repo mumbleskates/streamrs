@@ -5,31 +5,8 @@ use time::OffsetDateTime;
 // bilrost scored well in this Rust serialization benchmark
 // https://github.com/djkoloski/rust_serialization_benchmark
 
-#[derive(Debug, Clone, Eq, Message, PartialEq)]
-pub struct MessageWrapper {
-  #[bilrost(oneof(100, 101, 102))]
-  pub kind: MessageKind,
-}
-
-impl MessageWrapper {
-  #[must_use]
-  pub fn new_close_server() -> Self {
-    Self {
-      kind: MessageKind::CloseConsumers(String::from("Server is closing")),
-    }
-  }
-}
-
-impl From<Birth> for MessageWrapper {
-  fn from(birth: Birth) -> Self {
-    Self {
-      kind: MessageKind::Birth(birth),
-    }
-  }
-}
-
-#[derive(Debug, Eq, Clone, Oneof, PartialEq)]
-pub enum MessageKind {
+#[derive(Debug, Eq, Clone, Message, Oneof, PartialEq)]
+pub enum StreamMessage {
   None,
   #[bilrost(100)]
   Birth(Birth),
@@ -37,6 +14,19 @@ pub enum MessageKind {
   Marriage(String),
   #[bilrost(102)]
   CloseConsumers(String),
+}
+
+impl StreamMessage {
+  #[must_use]
+  pub fn new_close_server() -> Self {
+    Self::CloseConsumers(String::from("Server is closing"))
+  }
+}
+
+impl From<Birth> for StreamMessage {
+  fn from(birth: Birth) -> Self {
+    Self::Birth(birth)
+  }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Message)]
@@ -58,24 +48,17 @@ impl Birth {
 #[cfg(test)]
 pub mod tests {
   use super::*;
-  use bilrost::{BorrowedMessage, Message};
+  use bilrost::{Message, OwnedMessage};
   use tokio::test;
   use Birth;
 
   #[test]
   pub async fn test_serialize_roundtrip() {
     let birth = Birth::new(String::from("Alice"));
-    let wrapper = MessageWrapper {
-      kind: MessageKind::Birth(birth),
-    };
+    let msg = StreamMessage::from(birth.clone());
 
-    let encoded = wrapper.encode_to_bytes();
-    let decoded = MessageWrapper::decode_borrowed(&encoded).unwrap();
-    match decoded.kind {
-      MessageKind::Birth(birth) => {
-        assert_eq!(birth, birth);
-      }
-      _ => panic!("Expected Birth"),
-    }
+    let encoded = msg.encode_to_bytes();
+    let decoded = StreamMessage::decode(encoded.as_ref()).unwrap();
+    assert_eq!(decoded, msg);
   }
 }
